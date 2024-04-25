@@ -1,10 +1,12 @@
 import requests
 import json
+import os
 
-API_URL = "http://localhost:3000"
-API_USER = "demo- demo.demo"
-API_PASS = "demo"
-OFFSET = 65535
+from pathlib import Path
+from typing import Optional
+
+# TODO: Split this into multiple files
+
 
 class Planka:
     """API wrapper class for Planka
@@ -12,16 +14,28 @@ class Planka:
     - username: Username of Planka user
     - password: Password of Planka user
     """
-    def __init__(self, url:str, username:str, password:str, templates="config/templates.json"):
+
+    def __init__(
+        self,
+        url: str,
+        username: str,
+        password: str,
+        templates: Optional[os.PathLike] = None,
+    ):
         self.url = url
         self.username = username
         self.password = password
         self.auth = None
+
+        if not templates:
+            templates = Path(__file__).parent / "config" / "templates.json"
+
         with open(templates) as f:
             self.templates = json.load(f)
         self.authenticate()
-    
+
     def __repr__(self):
+        # TODO: Should this really include the plain-text password?
         return f"<{type(self).__name__}:\n\tBase URL: {self.url}\n\tLogin User: {self.username}\n\tLogin Pass: {self.password}\n\tAPI Token: {self.auth}\n>"
 
     def deauthenticate(self) -> bool:
@@ -33,7 +47,9 @@ class Planka:
             self.auth = None
             return True
         except:
-            raise InvalidToken(f"No active access token assigned to this instance\n{self.__repr__()}")
+            raise InvalidToken(
+                f"No active access token assigned to this instance\n{self.__repr__()}"
+            )
 
     def validate(self) -> bool:
         """Validates the Planka API connection
@@ -50,15 +66,18 @@ class Planka:
         - **return:** True if successful, False if not
         """
         try:
-            request = requests.post(f"{self.url}/api/access-tokens", data={'emailOrUsername': self.username, 'password': self.password})
-            self.auth = request.json()['item']
+            request = requests.post(
+                f"{self.url}/api/access-tokens",
+                data={"emailOrUsername": self.username, "password": self.password},
+            )
+            self.auth = request.json()["item"]
             if not self.auth:
                 raise InvalidToken(f"Invalid API credentials\n{self.__repr__()}")
             return True
         except:
             raise InvalidToken(f"Invalid API credentials\n{self.__repr__()}")
 
-    def request(self, method:str, endpoint:str, data:dict=None) -> dict:
+    def request(self, method: str, endpoint: str, data: Optional[dict] = None) -> dict:
         """Makes a request to the Planka API
         - method: HTTP method
         - endpoint: API endpoint
@@ -67,11 +86,10 @@ class Planka:
         """
         if not self.auth:
             self.authenticate()
-        headers = \
-            { 
+        headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.auth}"
-            }
+            "Authorization": f"Bearer {self.auth}",
+        }
         url = f"{self.url}{endpoint}"
         response = requests.request(method, url, headers=headers, json=data)
 
@@ -79,14 +97,16 @@ class Planka:
             raise InvalidToken("Invalid API credentials")
 
         if response.status_code not in [200, 201]:
-            raise InvalidToken(f"Failed to {method} {url} with status code {response.status_code}")
+            raise InvalidToken(
+                f"Failed to {method} {url} with status code {response.status_code}"
+            )
 
         try:
             return response.json()
         except:
             raise InvalidToken(f"Failed to parse response from {url}")
-    
-    def get_template(self, template:str) -> dict:
+
+    def get_template(self, template: str) -> dict:
         """Returns a template from the templates.json file
         - template: Name of template to return
         - **return:** Template dictionary
@@ -95,22 +115,25 @@ class Planka:
             return self.templates[template]
         except:
             raise InvalidToken(f"Template not found: {template}")
-        
-class Controller():
-    def __init__(self, instance:Planka) -> None:
+
+
+class Controller:
+    def __init__(self, instance: Planka) -> None:
         """Controller class for Planka API
         - instance: Planka API instance
         """
         self.instance = instance
-        self.template:dict = None
-        self.data:dict = None
-        self.response:dict = None
+        self.template: dict = None
+        self.data: dict = None
+        self.response: dict = None
 
     def __str__(self) -> str:
         """Returns a string representation of the controller object
         - **return:** String representation of controller object
         """
-        return f"{type(self).__name__}:\n{json.dumps(self.data, sort_keys=True, indent=4)}"
+        return (
+            f"{type(self).__name__}:\n{json.dumps(self.data, sort_keys=True, indent=4)}"
+        )
 
     def __repr__(self) -> str:
         """Returns a string representation of the controller object
@@ -129,7 +152,7 @@ class Controller():
         self.data = data
         return self.data
 
-    def create(self, route:str, data:dict=None) -> dict:
+    def create(self, route: str, data: dict = None) -> dict:
         """Creates a new controller object (POST)
         - route: Route for controller object POST request
         - **return:** POST response dictionary
@@ -141,14 +164,14 @@ class Controller():
         self.response = self.instance.request("POST", route, data)
         return self.response
 
-    def get(self, route:str) -> dict:
+    def get(self, route: str) -> dict:
         """Gets a controller object (GET)
         - route: Route for controller object GET request
         - **return:** GET response dictionary
         """
         return self.instance.request("GET", route)
 
-    def update(self, route:str, data:dict=None) -> dict:
+    def update(self, route: str, data: Optional[dict] = None) -> dict:
         """Updates a controller object (PATCH)
         - route: Route for controller object PATCH request
         - oid: ID of controller object
@@ -161,27 +184,28 @@ class Controller():
         self.response = self.instance.request("PATCH", route, data=data)
         return self.response
 
-    def delete(self, route:str) -> dict: 
+    def delete(self, route: str) -> dict:
         """Deletes a controller object (DELETE)
         - route: Route for controller object DELETE request
         - oid: ID of controller object
         - **return:** DELETE response dictionary
         """
         return self.instance.request("DELETE", route)
-    
+
     def last_response(self) -> dict:
         """Returns the last response from the controller object
         - **return:** Last response dictionary
         """
         return self.response
 
+
 class Project(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("project")
         self.data = self.build(**kwargs)
 
-    def get(self, name:str=None, oid:str=None) -> dict:
+    def get(self, name: Optional[str] = None, oid: Optional[str] = None) -> dict:
         """Gets a project by name
         - oid: ID of project to get (optional)
         - name: Name of project if None returns all projects
@@ -202,41 +226,47 @@ class Project(Controller):
         """Gets a list of project names
         - **return:** List of project names
         """
-        return [prj["name"] for prj in self.get()['items']]
-    
+        return [prj["name"] for prj in self.get()["items"]]
+
     def create(self) -> dict:
         """Creates a new project
         - **return:** POST response dictionary
         """
         if not self.data:
             raise InvalidToken(f"Please Build a {type(self).__name__} before creating")
-        if self.data["name"] in [prj["name"] for prj in self.get()['items']]:
+        if self.data["name"] in [prj["name"] for prj in self.get()["items"]]:
             raise InvalidToken(f"Project {self.data['name']} already exists")
         return super().create("/api/projects")
-    
-    def update(self, name:str) -> dict:
+
+    def update(self, name: str) -> dict:
         """Updates a project
         - name: Name of project to update
         - **return:** PATCH response dictionary
         """
-        prj_id = prj_id = self.get(name)['item']['id']
+        prj_id = prj_id = self.get(name)["item"]["id"]
         return super().update(f"/api/projects/{prj_id}")
 
-    def delete(self, name:str) -> dict:
+    def delete(self, name: str) -> dict:
         """Deletes a project
         - name: Name of project to delete
         - **return:** DELETE response dictionary
         """
-        prj_id = self.get(name)['item']['id']
+        prj_id = self.get(name)["item"]["id"]
         return super().delete(f"/api/projects/{prj_id}")
 
+
 class Board(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("board")
         self.data = self.build(**kwargs)
-    
-    def get(self, project_name:str=None, board_name:str=None, oid:str=None) -> dict:
+
+    def get(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optionoal[str] = None,
+        oid: Optional[str] = None,
+    ) -> dict:
         """Gets a board by name
         - oid: ID of board to get (optonal)
         - name: Name of board if None returns all boards
@@ -257,8 +287,8 @@ class Board(Controller):
             raise InvalidToken(f"Board `{board_name}` not found")
         board_id = [board for board in boards if board["name"] == board_name][0]["id"]
         return super().get(f"/api/boards/{board_id}")
-    
-    def create(self, project_name:str) -> dict:
+
+    def create(self, project_name: str) -> dict:
         """Creates a new board
         - prj_name: Name of project to create board in
         - **return:** POST response dictionary
@@ -266,10 +296,16 @@ class Board(Controller):
         if not self.data:
             raise InvalidToken(f"Please Build a {type(self).__name__} before creating")
         prj_con = Project(self.instance)
-        prj_id = prj_con.get(project_name)['item']['id']
+        prj_id = prj_con.get(project_name)["item"]["id"]
         return super().create(f"/api/projects/{prj_id}/boards")
-    
-    def update(self, project_name:str=None, board_name:str=None, data:dict=None, oid:str=None) -> dict:
+
+    def update(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optional[str] = None,
+        data: Optional[dict] = None,
+        oid: Optional[str] = None,
+    ) -> dict:
         """Updates a board
         - oid: ID of board to update (optional)
         - project_name: Name of project to update board in
@@ -284,10 +320,15 @@ class Board(Controller):
             return super().update(f"/api/boards/{oid}", data=data)
         if not (project_name and board_name):
             raise InvalidToken("Please provide project and board names")
-        board_id = self.get(project_name, board_name)['item']['id']
+        board_id = self.get(project_name, board_name)["item"]["id"]
         return super().update(f"/api/boards/{board_id}", data=self.data)
-    
-    def delete(self, project_name:str=None, board_name:str=None, oid:str=None):
+
+    def delete(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optional[str] = None,
+        oid: Optional[str] = None,
+    ):
         """Deletes a board
         - oid: ID of board to delete (optional)
         - project_name: Name of project to delete board in
@@ -300,16 +341,22 @@ class Board(Controller):
             raise InvalidToken("Please provide a project name")
         if not board_name:
             raise InvalidToken("Please provide a board name")
-        board_id = self.get(project_name, board_name)['item']['id']
+        board_id = self.get(project_name, board_name)["item"]["id"]
         return super().delete(f"/api/boards/{board_id}")
 
+
 class List(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("list")
         self.data = self.build(**kwargs)
 
-    def get(self, project_name:str=None, board_name:str=None, list_name:str=None):
+    def get(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optional[str] = None,
+        list_name: Optional[str] = None,
+    ):
         """Gets a list by name
         NOTE: No GET route for list by ID
         - project_name: Name of project to get list from
@@ -328,8 +375,13 @@ class List(Controller):
         if list_name not in list_names:
             raise InvalidToken(f"List `{list_name}` not found")
         return [lst for lst in lists if lst["name"] == list_name][0]
-    
-    def create(self, project_name:str=None, board_name:str=None, data:dict=None):
+
+    def create(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optional[str] = None,
+        data: Optional[dict] = None,
+    ):
         """Creates a new list
         - project_name: Name of project to create list in
         - board_name: Name of board to create list in
@@ -342,17 +394,24 @@ class List(Controller):
         if not (project_name and board_name):
             raise InvalidToken("Please provide project and board name")
         board_con = Board(self.instance)
-        board_id = board_con.get(project_name, board_name)['item']['id']
+        board_id = board_con.get(project_name, board_name)["item"]["id"]
         return super().create(f"/api/boards/{board_id}/lists")
-    
-    def update(self, project_name:str=None, board_name:str=None, list_name:str=None, data:dict=None, oid:str=None):
+
+    def update(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optional[str] = None,
+        list_name: Optional[str] = None,
+        data: Optional[dict] = None,
+        oid: Optional[str] = None,
+    ):
         """Updates a list
         - oid: ID of list to update (optional)
         - project_name: Name of project to update list in
         - board_name: Name of board to update list in
         - list_name: Name of list to update
         - **return:** PATCH response dictionary
-        """        
+        """
         if not data:
             data = self.data
         if not data:
@@ -363,8 +422,14 @@ class List(Controller):
             raise InvalidToken("Please provide project, board, and list names")
         lst = self.get(project_name, board_name, list_name)
         return super().update(f"/api/lists/{lst['id']}", data=data)
-    
-    def delete(self, project_name:str=None, board_name:str=None, list_name:str=None, oid:str=None):
+
+    def delete(
+        self,
+        project_name: Optional[str] = None,
+        board_name: Optional[str] = None,
+        list_name: Optional[str] = None,
+        oid: Optional[str] = None,
+    ):
         """Deletes a list
         - oid: ID of list to delete (optional)
         - project_name: Name of project to delete list in
@@ -379,13 +444,21 @@ class List(Controller):
         lst = self.get(project_name, board_name, list_name)
         return super().delete(f"/api/lists/{lst['id']}")
 
+
 class Card(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("card")
         self.data = self.build(**kwargs)
 
-    def get(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, oid:str=None):
+    def get(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        oid: str = None,
+    ):
         """Gets a card by name
         - oid: ID of card to get (optional)
         - project_name: Name of project to get card from
@@ -400,17 +473,27 @@ class Card(Controller):
             raise InvalidToken("Please provide project, board, and list names")
         board_con = Board(self.instance)
         board = board_con.get(project_name, board_name)
-        lst_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][0]["id"]
-        cards = [card for card in board["included"]["cards"] if card["listId"] == lst_id]
+        lst_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][
+            0
+        ]["id"]
+        cards = [
+            card for card in board["included"]["cards"] if card["listId"] == lst_id
+        ]
         card_names = [card["name"] for card in cards]
         if not card_name:
             return [self.get(oid=card["id"]) for card in cards]
         if card_name not in card_names:
             raise InvalidToken(f"Card `{card_name}` not found")
-        card_id = [card for card in cards if card["name"] == card_name][0]['id']
+        card_id = [card for card in cards if card["name"] == card_name][0]["id"]
         return super().get(f"/api/cards/{card_id}")
-    
-    def create(self, project_name:str=None, board_name:str=None, list_name:str=None, data:dict=None):
+
+    def create(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        data: dict = None,
+    ):
         """Creates a new card
         - project_name: Name of project to create card in
         - board_name: Name of board to create card in
@@ -425,10 +508,19 @@ class Card(Controller):
             raise InvalidToken("Please provide a project, board and list names")
         board_con = Board(self.instance)
         board = board_con.get(project_name, board_name)
-        lst_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][0]["id"]
+        lst_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][
+            0
+        ]["id"]
         return super().create(f"/api/lists/{lst_id}/cards")
 
-    def delete(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, oid:str=None):
+    def delete(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        oid: str = None,
+    ):
         """Deletes a card
         - oid: ID of card to delete (optional)
         - project_name: Name of project to delete card in
@@ -443,8 +535,16 @@ class Card(Controller):
             raise InvalidToken("Please provide a project, board, list, and card name")
         card = self.get(project_name, board_name, list_name, card_name)
         return super().delete(f"/api/cards/{card['id']}")
-    
-    def update(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, data:dict=None, oid:str=None):
+
+    def update(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        data: dict = None,
+        oid: str = None,
+    ):
         """Updates a card
         - oid: ID of card to update (optional)
         - project_name: Name of project to update card in
@@ -463,8 +563,15 @@ class Card(Controller):
             raise InvalidToken("Please provide a project, board, list, and card name")
         card = self.get(project_name, board_name, list_name, card_name)
         return super().update(f"/api/cards/{card['id']}", data=data)
-    
-    def get_labels(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, oid:str=None):
+
+    def get_labels(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        oid: str = None,
+    ):
         """Gets labels for a card
         - oid: ID of card to get labels from (optional)
         - project_name: Name of project to get card from
@@ -474,14 +581,15 @@ class Card(Controller):
         - **return:** GET response dictionary
         """
         if oid:
-            return self.get(oid=oid)['included']['cardLabels']
+            return self.get(oid=oid)["included"]["cardLabels"]
         if not (project_name and board_name and list_name and card_name):
             raise InvalidToken("Please provide project, board, list, and card names")
-        card_id = self.get(project_name, board_name, list_name, card_name)['item']['id']
-        return self.get(oid=card_id)['included']['cardLabels']
-    
+        card_id = self.get(project_name, board_name, list_name, card_name)["item"]["id"]
+        return self.get(oid=card_id)["included"]["cardLabels"]
+
+
 class Label(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("label")
         self.options = instance.get_template("colors")
@@ -489,8 +597,10 @@ class Label(Controller):
 
     def colors(self) -> list:
         return self.options
-    
-    def get(self, project_name:str=None, board_name:str=None, label_name:str=None) -> dict:
+
+    def get(
+        self, project_name: str = None, board_name: str = None, label_name: str = None
+    ) -> dict:
         """Gets a label by name
         - project_name: Name of project to get label from
         - board_name: Name of board to get label from
@@ -508,8 +618,10 @@ class Label(Controller):
         if label_name not in label_names:
             raise InvalidToken(f"Label `{label_name}` not found")
         return [label for label in labels if label["name"] == label_name][0]
-    
-    def create(self, project_name:str=None, board_name:str=None, data:dict=None):
+
+    def create(
+        self, project_name: str = None, board_name: str = None, data: dict = None
+    ):
         """Creates a new label
         - project_name: Name of project to create label in
         - board_name: Name of board to create label in
@@ -522,10 +634,16 @@ class Label(Controller):
         if not (project_name and board_name):
             raise InvalidToken("Please provide project and board names")
         board_con = Board(self.instance)
-        board = board_con.get(project_name, board_name)['item']
+        board = board_con.get(project_name, board_name)["item"]
         return super().create(f"/api/boards/{board['id']}/labels")
-    
-    def delete(self, project_name:str=None, board_name:str=None, label_name:str=None, oid:str=None):
+
+    def delete(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        label_name: str = None,
+        oid: str = None,
+    ):
         """Deletes a label
         - oid: ID of label to delete (optional)
         - project_name: Name of project to delete label from
@@ -539,8 +657,17 @@ class Label(Controller):
             raise InvalidToken("Please provide project, board, and label names")
         label = self.get(project_name, board_name, label_name)
         return super().delete(f"/api/labels/{label['id']}")
-    
-    def add(self, project_name:str=None, board_name:str=None, list_name:str=None ,card_name:str=None, label_name:str=None, card_id:str=None, label_id:str=None):
+
+    def add(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        label_name: str = None,
+        card_id: str = None,
+        label_id: str = None,
+    ):
         """Adds a label to a card
         - project_name: Name of project to add label to card in
         - board_name: Name of board to add label to card in
@@ -550,20 +677,35 @@ class Label(Controller):
         - **return:** POST response dictionary
         """
         if label_id and card_id:
-            return super().create(f"/api/cards/{card_id}/labels", data={"labelId":label_id})
+            return super().create(
+                f"/api/cards/{card_id}/labels", data={"labelId": label_id}
+            )
         if not (project_name and board_name and label_name):
             raise InvalidToken("Please provide a project, board, label name")
         if card_id:
             label = self.get(project_name, board_name, label_name)
-            return super().create(f"/api/cards/{card_id}/labels", data={"labelId":label['item']['id']})
+            return super().create(
+                f"/api/cards/{card_id}/labels", data={"labelId": label["item"]["id"]}
+            )
         if not (card_name and list_name):
             raise InvalidToken("Please provide a card and list name")
         card_con = Card(self.instance)
         card = card_con.get(project_name, board_name, list_name, card_name)
         label = self.get(project_name, board_name, label_name)
-        return super().create(f"/api/cards/{card['item']['id']}/labels", {"labelId":label['item']['id']})
+        return super().create(
+            f"/api/cards/{card['item']['id']}/labels", {"labelId": label["item"]["id"]}
+        )
 
-    def remove(self, project_name:str=None, board_name:str=None, list_name:str=None ,card_name:str=None, label_name:str=None, card_id:str=None, label_id:str=None):
+    def remove(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        label_name: str = None,
+        card_id: str = None,
+        label_id: str = None,
+    ):
         """Removes a label from a card
         - project_name: Name of project to remove label from card in
         - board_name: Name of board to remove label from card in
@@ -577,22 +719,36 @@ class Label(Controller):
         if not (project_name and board_name and label_name):
             raise InvalidToken("Please provide a project, board, label name")
         if card_id:
-            label_id = [label['id'] for label in Card(self.instance).get_labels(oid=card_id) if label['name'] == label_name][0]
+            label_id = [
+                label["id"]
+                for label in Card(self.instance).get_labels(oid=card_id)
+                if label["name"] == label_name
+            ][0]
             return super().delete(f"/api/cards/{card_id}/labels/{label_id}")
         if not (card_name and list_name):
             raise InvalidToken("Please provide a card and list name")
         card_con = Card(self.instance)
         card = card_con.get(project_name, board_name, list_name, card_name)
         label = self.get(project_name, board_name, label_name)
-        return super().delete(f"/api/cards/{card['item']['id']}/labels/{label['item']['id']}")
+        return super().delete(
+            f"/api/cards/{card['item']['id']}/labels/{label['item']['id']}"
+        )
+
 
 class Task(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("task")
         self.data = self.build(**kwargs)
-    
-    def get(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, task_name:str=None) -> dict:
+
+    def get(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        task_name: str = None,
+    ) -> dict:
         """Gets a task by name
         NOTE: No GET route for tasks by OID
         - project_name: Name of project to get task from
@@ -606,18 +762,34 @@ class Task(Controller):
             raise InvalidToken("Please provide project, board, list, and card names")
         board_con = Board(self.instance)
         board = board_con.get(project_name, board_name)
-        list_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][0]["id"]
-        cards = [card for card in board["included"]["cards"] if card["name"] == card_name and card["listId"] == list_id]
+        list_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][
+            0
+        ]["id"]
+        cards = [
+            card
+            for card in board["included"]["cards"]
+            if card["name"] == card_name and card["listId"] == list_id
+        ]
         card_id = [card for card in cards if card["name"] == card_name][0]["id"]
-        tasks = [task for task in board["included"]["tasks"] if task["cardId"] == card_id]
+        tasks = [
+            task for task in board["included"]["tasks"] if task["cardId"] == card_id
+        ]
         task_names = [task["name"] for task in tasks]
         if not task_name:
             return tasks
         if task_name not in task_names:
             raise InvalidToken(f"Task `{task_name}` not found")
         return [task for task in tasks if task["name"] == task_name][0]
-    
-    def create(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, data:dict=None, card_id:str=None):
+
+    def create(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        data: dict = None,
+        card_id: str = None,
+    ):
         """Creates a new task
         - card_id: ID of card to create task in (optional)
         - project_name: Name of project to create task in
@@ -636,12 +808,27 @@ class Task(Controller):
             raise InvalidToken("Please provide project, board, list, and card names")
         board_con = Board(self.instance)
         board = board_con.get(project_name, board_name)
-        list_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][0]["id"]
-        cards = [card for card in board["included"]["cards"] if card["name"] == card_name and card["listId"] == list_id]
+        list_id = [ls for ls in board["included"]["lists"] if ls["name"] == list_name][
+            0
+        ]["id"]
+        cards = [
+            card
+            for card in board["included"]["cards"]
+            if card["name"] == card_name and card["listId"] == list_id
+        ]
         card_id = [card for card in cards if card["name"] == card_name][0]["id"]
         return super().create(f"/api/cards/{card_id}/tasks")
-    
-    def update(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, task_name:str=None, data:dict=None, oid:str=None):
+
+    def update(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        task_name: str = None,
+        data: dict = None,
+        oid: str = None,
+    ):
         """Updates a task
         - oid: Object ID of task to update (optional)
         - project_name: Name of project to update task in
@@ -658,11 +845,21 @@ class Task(Controller):
         if oid:
             return super().update(f"/api/tasks/{oid}")
         if not (project_name and board_name and list_name and card_name and task_name):
-            raise InvalidToken("Please provide project, board, list, card, and task names")
+            raise InvalidToken(
+                "Please provide project, board, list, card, and task names"
+            )
         task = self.get(project_name, board_name, list_name, card_name, task_name)
         return super().update(f"/api/tasks/{task['id']}")
-       
-    def delete(self, project_name:str=None, board_name:str=None, list_name:str=None, card_name:str=None, task_name:str=None, oid:str=None):
+
+    def delete(
+        self,
+        project_name: str = None,
+        board_name: str = None,
+        list_name: str = None,
+        card_name: str = None,
+        task_name: str = None,
+        oid: str = None,
+    ):
         """Deletes a task
         - oid: ID of task to delete (Use this if you already have the ID)
         - project_name: Name of project to delete task from
@@ -675,24 +872,29 @@ class Task(Controller):
         if oid:
             return super().delete(f"/api/tasks/{id}")
         if not (project_name and board_name and list_name and card_name and task_name):
-            raise InvalidToken("Please provide project, board, list, card, and task names")
+            raise InvalidToken(
+                "Please provide project, board, list, card, and task names"
+            )
         task = self.get(project_name, board_name, list_name, card_name, task_name)
         return super().delete(f"/api/tasks/{task['id']}")
 
+
 class Attachment(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("attachment")
         self.data = self.build(**kwargs)
 
+
 class Stopwatch(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("stopwatch")
         self.data = self.build(**kwargs)
 
+
 class Background(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("background")
         self.options = instance.get_template("gradients")
@@ -704,7 +906,7 @@ class Background(Controller):
         """
         return self.options
 
-    def apply(self, prj_name:str):
+    def apply(self, prj_name: str):
         """Applies a gradient to a project
         - project: Name of project to apply gradient to
         - **return:** PATCH response dictionary
@@ -714,10 +916,12 @@ class Background(Controller):
         if "type" not in self.data.keys():
             raise InvalidToken("Please specify a background type: `gradient` | `image`")
         if self.data["type"] == "gradient" and self.data["name"] not in self.options:
-            raise InvalidToken(f"Gradient {self.data['name']} not found: please choose from\n{self.options}")
+            raise InvalidToken(
+                f"Gradient {self.data['name']} not found: please choose from\n{self.options}"
+            )
         return super().update(f"/api/projects/{prj_id}", data={"background": self.data})
-    
-    def clear(self, prj_name:str):
+
+    def clear(self, prj_name: str):
         """Clears a gradient from a project
         - project: Name of project to clear gradient from
         - **return:** PATCH response dictionary
@@ -726,14 +930,16 @@ class Background(Controller):
         prj_id = project.get(prj_name)["item"]["id"]
         return super().update(f"/api/projects/{prj_id}", data={"background": None})
 
+
 class Comment(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         self.instance = instance
         self.template = instance.get_template("comment-action")
         self.data = self.build(**kwargs)
 
+
 class User(Controller):
-    def __init__(self, instance:Planka, **kwargs) -> None:
+    def __init__(self, instance: Planka, **kwargs) -> None:
         """Creates a user
         - username: Username of user to create
         - name: Display name of user to create
@@ -747,7 +953,7 @@ class User(Controller):
         self.template = instance.get_template("user")
         self.data = self.build(**kwargs)
 
-    def get(self, username:str=None):
+    def get(self, username: str = None):
         """Gets a user
         - username: Username of user to get (all if not provided)
         - **return:** GET response dictionary
@@ -759,8 +965,8 @@ class User(Controller):
         if username not in names:
             raise InvalidToken(f"User {username} not found")
         return users[names.index(username)]
-    
-    def create(self, data:dict=None):
+
+    def create(self, data: dict = None):
         """Creates a user
         - data: Data dictionary to create user with (optional)
         - **return:** POST response dictionary
@@ -768,12 +974,14 @@ class User(Controller):
         if not data:
             data = self.data
         if not data:
-            raise InvalidToken("Please either build a user or provide a data dictionary")
+            raise InvalidToken(
+                "Please either build a user or provide a data dictionary"
+            )
         if self.data["username"] in [user["username"] for user in self.get()]:
             raise InvalidToken(f"User {self.data['username']} already exists")
         return super().create("/api/users", data=self.data)
-    
-    def delete(self, username:str, oid:str=None):
+
+    def delete(self, username: str, oid: str = None):
         """Deletes a user
         - username: Username of user to delete
         - oid: ID of user to delete (Use this if you already have the ID)
@@ -784,8 +992,8 @@ class User(Controller):
         if username not in [user["username"] for user in self.get()]:
             raise InvalidToken(f"User {username} not found")
         return super().delete(f"/api/users/{self.get(username)['id']}")
-    
-    def update(self, username:str, oid:str=None, data:dict=None):
+
+    def update(self, username: str, oid: str = None, data: dict = None):
         """Updates a user
         - username: Username of user to update
         - oid: ID of user to update (Use this if you already have the ID)
@@ -796,10 +1004,13 @@ class User(Controller):
         if not data:
             data = self.data
         if not data:
-            raise InvalidToken("Please either build a user or provide a data dictionary")
+            raise InvalidToken(
+                "Please either build a user or provide a data dictionary"
+            )
         return super().update(f"/api/users/{user['id']}", data=data)
-    
+
+
 class InvalidToken(Exception):
-    """General Error for invalid API inputs
-    """
+    """General Error for invalid API inputs"""
+
     pass

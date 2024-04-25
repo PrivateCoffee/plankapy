@@ -25,8 +25,7 @@ jobs:
           apt install -y python3 python3-pip git
 
       - name: Git pull
-        run: |
-          git pull
+        uses: actions/checkout@v4
 
       - name: Install Python dependencies
         run: |

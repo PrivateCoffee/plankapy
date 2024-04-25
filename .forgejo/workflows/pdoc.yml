@@ -26,9 +26,9 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install pdoc requests --break-system-packages
+          pip install pdoc . --break-system-packages
 
-      - run: python3 -m pdoc -d markdown -o docs src/plankapy/plankapy.py
+      - run: python3 -m pdoc -d markdown -o docs plankapy
 
       - uses: forgejo/upload-artifact@v4
         with:

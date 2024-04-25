@@ -264,7 +264,7 @@ class Board(Controller):
     def get(
         self,
         project_name: Optional[str] = None,
-        board_name: Optionoal[str] = None,
+        board_name: Optional[str] = None,
         oid: Optional[str] = None,
     ) -> dict:
         """Gets a board by name

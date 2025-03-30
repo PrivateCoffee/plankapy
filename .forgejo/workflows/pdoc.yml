@@ -17,7 +17,7 @@ jobs:
   # Build the documentation and upload the static HTML files as an artifact.
   build:
     container: 
-      image: node:20-bookworm
+      image: node:22-bookworm
     steps:
       - name: Install dependencies
         run: |
